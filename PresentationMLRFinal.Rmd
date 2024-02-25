@@ -1,0 +1,491 @@
+---
+title: "Analyzing Melbourne Housing Market Data Via Parametric & Bootstrap Multiple Linear Regression"
+subtitle: '<img src="housing-in-florida.jpg" width=300 height=160>'
+author: Gianna LaFrance & Haley Koprivsek
+date: '2/19/2024'
+output:
+  xaringan::moon_reader:
+    css: xaringan-themer.css
+    nature:
+      slideNumberFormat: "%current%"
+      highlightStyle: github
+      highlightLines: true
+      ratio: 16:9
+      countIncrementalSlides: true
+---
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(
+  fig.width=9, fig.height=3.5, fig.retina=3,
+  out.width = "100%",
+  cache = FALSE,
+  echo = TRUE,
+  message = FALSE, 
+  warning = FALSE,
+  hiline = TRUE
+)
+```
+
+```{r xaringan-themer, include=FALSE, warning=FALSE}
+library(xaringanthemer)
+
+style_mono_light(
+  header_font_google = google_font("Open Sans", "300"),
+  text_font_google   = google_font("Lato", "400"),
+  code_font_google   = google_font("IBM Plex Mono"),
+  base_color = "#66C197")
+
+```
+
+<h1 align = "center"> Table of Contents </h1>
+<center><font size="7">  
+- Introduction <br>
+- Exploratory Data Analysis <br>
+- Performing Multiple Linear Regression <br>
+- Bootstrap Multiple Linear Regression <br>
+- Final Model <br>
+- Conclusion & Discussion
+</font></center>
+
+
+---
+name: colors
+
+## Introduction
+
+<font size="5.5"> 
+.pull-left[
+- Data set: Melboure housing market data from Jan. 2016 <br><br>
+- 34,857 total observations, 21 variables. <br><br>
+- Analysis via exploratory data analysis, several multiple linear regression models, & bootstrap MLR<br><br>
+- Response variable: selling price<br><br>
+- Final model chosen from candidate models based on goodness-of-fit & residual analysis
+]
+
+.pull-right[
+- 8 categorical variables, including:
+    - Suburb
+    - Type (house, townhouse, unit, etc.)
+    - Year Built
+- 13 numerical variables, including: 
+    - Selling Price (in Australian Dollars) (response)
+    - Number of Bedrooms
+    - Distance from Melbourne’s Central Business District (in kilometers)
+    - Latitude & Longtitude
+]
+</font>
+
+---
+class: inverse center middle
+
+# Exploratory Data Analysis
+
+
+---
+name: colors
+
+## Creating Group Location Variable Using Longitude and Latitude Data
+
+<font size="5.5"> 
+.pull-left[
+- Scatter plot based on latitude & longitude revealed that vast majority of homes located in one central cluster <br><br>
+- Factor variable created to indicate whether or not each home falls into this main cluster <br><br>
+- **Type** also converted to a factor variable <br><br>
+- **Distance** converted from character to numeric values <br><br>
+]
+</font>
+
+.pull-right[
+```{r, echo=FALSE, fig.align='right',out.width = '700px', out.height='450px'}
+HousingData <- read.csv("https://pengdsci.github.io/datasets/MelbourneHousingMarket/MelbourneHousing.csv", header = TRUE)
+lon <- HousingData$Longtitude
+lat <- HousingData$Lattitude 
+par(bg = 'NA') #changes background color
+plot(lon, lat, main = "Sites of houses sold")
+abline(v = 144.8, h = -38.0, col = "blue")
+abline(v = 145.3, h = -37.6, col = "blue")
+
+main.group = (lon > 144.8) & (lon < 145.3) & (lat > -38.0) & (lat < -37.6)
+HousingData$main.group <- factor(main.group)
+HousingData$Type <- factor(HousingData$Type)
+HousingData$Distance.num <- as.numeric(HousingData$Distance)
+```
+]
+
+---
+class: inverse center middle
+
+# Parametric Multiple Linear Regression
+
+
+---
+name: colors
+
+## Initial Full Model
+
+.pull-left[
+```{r, echo=FALSE}
+library(kableExtra)
+HousingData.Final <- HousingData[, c(3,4,5,11,12,13,14,15,22,23)]
+full.model = lm(Price ~ ., data = HousingData.Final)
+kable_styling(kable(summary(full.model)$coef, caption ="Statistics of Regression Coefficients"), font_size = 16)
+```
+]
+
+.pull-right[
+```{r, echo=FALSE, out.height='300px'}
+par(mfrow=c(2,2), mar = c(2, 2, 2, 2), bg='NA')
+plot(full.model)
+```
+<br><br>
+Residual plots suggest serious violations of both normality & constant variance, potential outliers
+]
+
+---
+name: colors
+
+## Initial Full Model
+
+<font size="5.5"> 
+.pull-left[
+- VIF values suggest a serious multicollinearity issue between the **Rooms** (total # of rooms) & **Bedroom2** (# of bedrooms) 
+<br><br>
+- For lack of better remedy at the time, **Bedroom2** omitted from working data set
+]
+</font>
+
+.pull-right[
+```{r, echo=FALSE}
+library(car)
+kable_styling(kable(vif(full.model), caption = "VIF Values for Each Explanatory Variable"), font_size=20)
+```
+]
+
+---
+name: colors
+
+## Box-Cox Model
+
+.pull-left[
+- Box-Cox transformation applied to **Price** (selling price) to attempt to remedy violations of assumptions of full model
+- New model constructed with Box-Cox transformed response variable with same explanatory variables 
+```{r, echo=FALSE, out.height='400px'}
+library(MASS)
+HousingData.Final.Reduced <- HousingData[, c(3,4,5,12,13,14,15,22,23)]
+par(bg = 'NA')
+boxcox(lm(Price ~ ., data = HousingData.Final.Reduced), seq(-.3, -.2, length = 10))
+```
+]
+
+.pull-right[
+```{r, echo=FALSE, out.height='300px'}
+lambda <- -.24
+HousingData.Final.Reduced$Price.BC <- (HousingData.Final.Reduced$Price^lambda-1)/lambda
+Box.Cox.Model <-  lm(Price.BC ~ Rooms + Type + Bathroom + Car + Landsize + BuildingArea + main.group + Distance.num, data = HousingData.Final.Reduced)
+par(mfrow=c(2,2), mar = c(2, 2, 2, 2), bg='NA')
+plot(Box.Cox.Model)
+```
+- Residual plots for this model appear to align much more closely with model assumptions
+- Potential outliers not completely removed, but reduced in severity
+- Still some abberations at extreme ends of plots, so more models constructed to try to find even better fit
+]
+
+
+---
+name: colors
+
+## Square-Root Model
+
+
+- Another model constructed using square-root of response variable
+- Slightly better residual plots than those of full model, but still exhibits similar problems, just less severe
+
+
+```{r, echo=FALSE, out.height='400px'}
+Sqrt.Model <- lm((Price)^.5 ~ Rooms + Type + Bathroom + Car + Landsize + BuildingArea + main.group + Distance.num, data = HousingData.Final.Reduced)
+par(mfrow=c(2,2), mar = c(2,2,2,2), bg='NA')
+plot(Sqrt.Model)
+```
+
+---
+name: colors
+
+## Log Model
+
+<font size="5.5"> 
+.pull-left[
+- One more candidate model constructed using log-transformed response variable <br><br>
+- Residual plots better than those of the full model & square-root model, but still exhibits aberrations at the extreme ends <br><br>
+- Thus, Box-Cox model still appears to be most trustworthy based on residual analysis <br><br>
+]
+</font>
+
+.pull-right[
+```{r, echo=FALSE, out.height='350px'}
+Log.Model = lm(log(Price) ~ Rooms + Type + Bathroom + Car + Landsize + BuildingArea + main.group + Distance.num, data = HousingData.Final.Reduced)
+par(mfrow=c(2,2), mar = c(2, 2, 2, 2), bg='NA')
+plot(Log.Model)
+```
+]
+
+---
+name: colors
+
+## Comparing Models by Goodness of Fit
+
+<font size="5"> 
+- Goodness-of-fit measures for each model largely aligned with the inferences drawn from residual analysis <br><br>
+- Box-Cox model had highest adjusted r-squared value, lowest AIC, & one of the lowest Mallows's C<sub>p</sub> <br><br>
+- Log model with second best GOF metrics, followed by Square Root model, and the full model performing worst <br><br>
+- Based on GOF measures & residual analysis, Box-Cox model chosen as final parametric model
+</font>
+<br><br>
+```{r, echo=FALSE}
+select=function(m){ # m is an object: model
+ e = m$resid                           # residuals
+ n0 = length(e)                        # sample size
+ SSE=(m$df)*(summary(m)$sigma)^2       # sum of squared error
+ R.sq=summary(m)$r.squared             # Coefficient of determination: R square!
+ R.adj=summary(m)$adj.r                # Adjusted R square
+ MSE=(summary(m)$sigma)^2              # square error
+ Cp=(SSE/MSE)-(n0-2*(n0-m$df))         # Mellow's p
+ AIC=n0*log(SSE)-n0*log(n0)+2*(n0-m$df)          # Akaike information criterion
+ SBC=n0*log(SSE)-n0*log(n0)+(log(n0))*(n0-m$df)  # Schwarz Bayesian Information criterion
+ X=model.matrix(m)                     # design matrix of the model
+ H=X%*%solve(t(X)%*%X)%*%t(X)          # hat matrix
+ d=e/(1-diag(H))                       
+ PRESS=t(d)%*%d   # predicted residual error sum of squares (PRESS)- a cross-validation measure
+ tbl = as.data.frame(cbind(SSE=SSE, R.sq=R.sq, R.adj = R.adj, Cp = Cp, AIC = AIC, SBC = SBC, PRD = PRESS))
+ names(tbl)=c("SSE", "R.sq", "R.adj", "Cp", "AIC", "SBC", "PRESS")
+ tbl
+}
+
+output.sum = rbind(select(full.model), select(Box.Cox.Model), select(Sqrt.Model), select(Log.Model))
+row.names(output.sum) = c("full.model","Box.Cox.Model", "Sqrt.Model", "Log.Model")
+kable(output.sum, caption = "Goodness-of-fit Measures of Candidate Models")
+```
+
+
+
+---
+class: inverse center middle
+
+# Bootstrap Multiple Linear Regression
+
+---
+
+## Bootstrap Cases
+
+<font size = "5">
+.pull-left[
+- 1000 bootstrap regression models fitted by sampling from original observations with replacement <br><br>
+- 95% confidence interval constructed for the regression coefficient value of each explanatory variable based on bootstrap models <br><br>
+- Observations missing a Box-Cox-transformed response variable value had to be omitted, but sufficient number of observations remained from which to make inferences 
+]
+</font>
+```{r,echo=FALSE}
+Clean_Data <- subset(HousingData.Final.Reduced, !is.na(Price.BC))
+BC.Model.Clean <- lm(Price.BC ~ Rooms + Type + Bathroom + Car + Landsize + BuildingArea + main.group + Distance.num, data = Clean_Data)
+B = 1000       
+num.p = dim(model.frame(BC.Model.Clean))[2]  
+smpl.n = dim(model.frame(BC.Model.Clean))[1] 
+coef.mtrx = matrix(rep(0, 10000), ncol = 10)       
+for (i in 1:B){
+  bootc.id = sample(1:smpl.n, smpl.n, replace = TRUE) 
+Box.Cox.Boot <- lm(Price.BC ~ Rooms + Type + Bathroom + Car + Landsize + BuildingArea + main.group + Distance.num, data = Clean_Data[bootc.id,])     
+  coef.mtrx[i,] = coef(Box.Cox.Boot)
+}
+
+```
+
+.pull-right[
+```{r, echo=FALSE}
+cmtrx <- summary(BC.Model.Clean)$coef
+num.p = dim(coef.mtrx)[2] 
+btc.ci = NULL
+btc.wd = NULL
+for (i in 1:10){
+  lci.025 = round(quantile(coef.mtrx[, i], 0.025, type = 2),8)
+  uci.975 = round(quantile(coef.mtrx[, i],0.975, type = 2 ),8)
+  btc.wd[i] =  uci.975 - lci.025
+  btc.ci[i] = paste("[", round(lci.025,4),", ", round(uci.975,4),"]")
+ }
+kable_styling(kable(as.data.frame(cbind(formatC(cmtrx,4,format="f"), btc.ci.95=btc.ci)), 
+      caption = "Regression Coefficient Matrix"), font_size = "15")
+```
+]
+
+
+---
+
+## Bootstrap Histograms 
+
+<font size = "4.2">
+.left-column[
+- Distribution of bootstrap coefficients roughly normal for most explanatory variables except for **main.group** significantly skewed (imbalanced data?)
+- Discrepancy suggests that p-values of parametric model may not be entirely valid
+- Advisable to use bootstrap C.I.s for making inferences about relationship between variables
+]
+</font>
+
+.right-column[
+```{r, echo=FALSE, out.height='360px'}
+boot.hist = function(cmtrx, bt.coef.mtrx, var.id, var.nm){
+  x1.1 <- seq(min(bt.coef.mtrx[,var.id]), max(bt.coef.mtrx[,var.id]), length=300 )
+  y1.1 <- dnorm(x1.1, mean(bt.coef.mtrx[,var.id]), sd(bt.coef.mtrx[,var.id]))
+  highestbar = max(hist(bt.coef.mtrx[,var.id], plot = FALSE)$density) 
+  ylimit <- max(c(y1.1,highestbar))
+  hist(bt.coef.mtrx[,var.id], probability = TRUE, main = var.nm, xlab="", 
+       col = "azure1",ylim=c(0,ylimit), border="lightseagreen")
+  lines(x = x1.1, y = y1.1, col = "red3")
+  lines(density(bt.coef.mtrx[,var.id], adjust=2), col="blue") 
+}
+
+par(mfrow=c(3,3), mar = c(2, 2, 2, 2), bg='NA')
+boot.hist(bt.coef.mtrx=coef.mtrx, var.id=1, var.nm ="Intercept" )
+boot.hist(bt.coef.mtrx=coef.mtrx, var.id=2, var.nm ="Rooms" )
+boot.hist(bt.coef.mtrx=coef.mtrx, var.id=3, var.nm ="Type" )
+boot.hist(bt.coef.mtrx=coef.mtrx, var.id=4, var.nm ="Bathroom" )
+boot.hist(bt.coef.mtrx=coef.mtrx, var.id=5, var.nm ="Car" )
+boot.hist(bt.coef.mtrx=coef.mtrx, var.id=6, var.nm ="Landsize" )
+boot.hist(bt.coef.mtrx=coef.mtrx, var.id=7, var.nm ="BuildingArea" )
+boot.hist(bt.coef.mtrx=coef.mtrx, var.id=8, var.nm ="main.group" )
+boot.hist(bt.coef.mtrx=coef.mtrx, var.id=9, var.nm ="Distance.num" )
+```
+]
+
+---
+name: colors
+
+## Bootstrap Residuals
+
+.pull-left[
+- Large number of bootstrap samples taken from the residuals of the original model, residuals in each sample are added to the fitted values of corresponding observations, gives new sets of predicted y values 
+
+- Each sample of new predicted y value together with the original observations is used to generate new regression models, regression coefficients of each are extracted and used to construct the confidence intervals
+
+- Needed to remove all observations with missing values, but CLT still holds for new data set 
+ 
+- New Box-Cox model generated using this new data set to use in the bootstrapping procedure
+]
+
+.pull-right[
+```{r, echo=FALSE}
+Cleaner_Data <- na.omit(Clean_Data)
+BC.Model.Cleaner <- lm(Price.BC ~ Rooms + Type + Bathroom + Car + Landsize + BuildingArea + main.group + Distance.num, data = Cleaner_Data)
+
+model.resid = BC.Model.Cleaner$residuals
+B=1000
+num.p = dim(model.matrix(BC.Model.Cleaner))[2]   
+samp.n = dim(model.matrix(BC.Model.Cleaner))[1]  
+btr.mtrx = matrix(rep(0, 10000), ncol=10) 
+for (i in 1:B){
+  Boot.R.Price = BC.Model.Cleaner$fitted.values + 
+        sample(BC.Model.Cleaner$residuals, samp.n, replace = TRUE)
+  Cleaner_Data$Boot.R.Price = Boot.R.Price
+  Box.Cox.Boot.R = lm(Boot.R.Price ~ Rooms + Type + Bathroom + Car + Landsize + BuildingArea + main.group + Distance.num, data = Cleaner_Data[bootc.id,])   # b
+  btr.mtrx[i,]=Box.Cox.Boot.R$coefficients
+}
+
+cmtrx.r <- summary(BC.Model.Cleaner)$coef
+num.p = dim(coef.mtrx)[2]  
+btr.ci = NULL
+btr.wd = NULL
+for (i in 1:num.p){
+  lci.025 = round(quantile(btr.mtrx[, i], 0.025, type = 2),8)
+  uci.975 = round(quantile(btr.mtrx[, i],0.975, type = 2 ),8)
+  btr.wd[i] = uci.975 - lci.025
+  btr.ci[i] = paste("[", round(lci.025,4),", ", round(uci.975,4),"]")
+}
+kable_styling(kable(as.data.frame(cbind(formatC(cmtrx.r,4,format="f"), btr.ci.95=btr.ci)), 
+      caption = "Regression Coefficient Matrix with 95% Residual Bootstrap CI"), font_size="15")
+```
+]
+
+---
+names: colors
+
+## Bootstrap Residuals
+
+```{r, echo=FALSE}
+
+boot.hist = function(bt.coef.mtrx, var.id, var.nm){
+  x1.1 <- seq(min(bt.coef.mtrx[,var.id]), max(bt.coef.mtrx[,var.id]), length=300 )
+  y1.1 <- dnorm(x1.1, mean(bt.coef.mtrx[,var.id]), sd(bt.coef.mtrx[,var.id]))
+  highestbar = max(hist(bt.coef.mtrx[,var.id], plot = FALSE)$density) 
+  ylimit <- max(c(y1.1,highestbar))
+  hist(bt.coef.mtrx[,var.id], probability = TRUE, main = var.nm, xlab="", 
+       col = "azure1",ylim=c(0,ylimit), border="lightseagreen")
+  lines(x = x1.1, y = y1.1, col = "red3")               
+  lines(density(bt.coef.mtrx[,var.id], adjust=2), col="blue") 
+} 
+
+par(mfrow=c(3,3), mar = c(2, 2, 2, 2), bg='NA')
+boot.hist(bt.coef.mtrx=btr.mtrx, var.id=1, var.nm ="Intercept" )
+boot.hist(bt.coef.mtrx=btr.mtrx, var.id=2, var.nm ="Rooms" )
+boot.hist(bt.coef.mtrx=btr.mtrx, var.id=3, var.nm ="Type" )
+boot.hist(bt.coef.mtrx=btr.mtrx, var.id=4, var.nm ="Bathroom" )
+boot.hist(bt.coef.mtrx=btr.mtrx, var.id=5, var.nm ="Car" )
+boot.hist(bt.coef.mtrx=btr.mtrx, var.id=6, var.nm ="Landsize" )
+boot.hist(bt.coef.mtrx=btr.mtrx, var.id=7, var.nm ="BuildingArea" )
+boot.hist(bt.coef.mtrx=btr.mtrx, var.id=8, var.nm ="main.group" )
+boot.hist(bt.coef.mtrx=btr.mtrx, var.id=9, var.nm ="Distance.num" )
+```
+
+- All distributions roughly normal, but skewness of **main.group** distribution from bootstrap cases procedure still suggests non-parametric approach more advisable  
+
+
+---
+class: inverse center middle
+
+# Final Model
+
+---
+name: colors
+
+## Final Model
+
+BoxCox(**Price**) = 3.9881 + 0.0061x**Rooms** - 0.0089x**Typet** - 0.0191x**Typeu** + 0.0055x**Bathroom** + 0.0008x**Car** +0.0000007x**Landsize** +0.000001x**BuildingArea** + 0.0107x**main.groupTRUE** - 0.0010x**Distance.num**, where BoxCox(**Price**) represents the value of price after the Box-Cox transformation is applied where lambda = -0.24. 
+
+```{r, echo=FALSE}
+kable(summary(Box.Cox.Model)$coef, caption = "Inferential Statistics of Final Model")
+```
+
+---
+class: inverse center middle
+
+# Conclusion & Discussion
+
+---
+class: colors
+
+## Conclusion
+
+<font size="5.75">
+- Regression coefficients generally aligned with intuition e.g., selling price positively associated with the number of rooms, negatively associated with distance from desirable part of city, etc.  <br><br>
+
+- The bootstrap regression results very similar to estimates of the final parametric model<br><br>
+
+- Bootstrap results likely more trustworthy than p-values of parametric model because violations of assumptions of normality/constant variance not issues for non-parametric approach<br><br>
+
+- Bootstrapping also lessens impact of extreme outliers evident in versus fits plots
+</font>
+
+
+
+---
+class: inverse center middle
+
+# Questions?
+
+
+---
+class: colors
+
+## Contributions
+
+- Content ~ Haley
+- Slide Style ~ Gianna
+- Edit Content/Slides ~ Haley, Gianna
+
